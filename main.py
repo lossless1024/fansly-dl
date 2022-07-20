@@ -10,12 +10,13 @@ with open('config.json', 'rb') as f:
     config = json.load(f)
 
 headers = {
+    'User-Agent': config['user-agent'],
     'authorization': config['token']
 }
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-API_URL = 'https://apiv2.fansly.com/api/v1/'
+API_URL = 'https://apiv3.fansly.com/api/v1/'
 
 subscriptions = requests.get(API_URL + 'subscriptions', headers=headers).json()
 if not subscriptions['success']:
@@ -23,7 +24,7 @@ if not subscriptions['success']:
     sys.exit(1)
 accountIds = list(map(lambda a: a['accountId'], subscriptions['response']['subscriptions']))
 
-accounts = requests.get(API_URL + 'account?ids=' + ','.join(accountIds)).json()
+accounts = requests.get(API_URL + 'account?ids=' + ','.join(accountIds), headers=headers).json()
 if not accounts['success']:
     logging.critical('Failed to fetch accounts')
     sys.exit(1)
@@ -51,7 +52,8 @@ for account in accounts['response']:
             data = media['media']
             if data['locations']:
                 url = data['locations'][0]['location']
-                filename = datetime.datetime.utcfromtimestamp(data['createdAt']).strftime('%Y%m%d_%H%M%S_') + data['filename']
+                cdn_filename = data['location'].split('/')[-1]
+                filename = datetime.datetime.utcfromtimestamp(data['createdAt']).strftime('%Y%m%d_%H%M%S_') + cdn_filename
                 if filename.endswith('.mp4'):
                     filename = 'vid/' + filename
                 elif filename.endswith('.jpg') or filename.endswith('.png') or filename.endswith('.gif'):
@@ -59,8 +61,8 @@ for account in accounts['response']:
                 full_dl_path = folder + filename
                 if not os.path.exists(full_dl_path):
                     with open(full_dl_path, 'wb') as f:
-                        logging.info('Fetching ' + data['filename'])
-                        f.write(requests.get(url).content)
+                        logging.info('Fetching ' + cdn_filename)
+                        f.write(requests.get(url, headers=headers).content)
                 else:
                     hit_end = config['quick_fetch']
 

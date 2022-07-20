@@ -1,5 +1,6 @@
 {
   "download_folder": "dl",
   "quick_fetch": true,
+  "user-agent": "<paste your user agent here>",
   "token": "<paste your token here>"
 }
