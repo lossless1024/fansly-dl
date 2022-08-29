@@ -45,6 +45,9 @@ for account in accounts['response']:
             logging.critical('Failed to fetch timeline')
             break
 
+        if 'posts' not in resp['response']:
+            break
+
         if not resp['response']['posts']:
             break
 
