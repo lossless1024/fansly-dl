@@ -61,7 +61,7 @@ class Fetch:
         raise StopIteration
 
     def fetch_more(self):
-        print(self.endpoint)
+        logging.debug(self.endpoint)
         count_before_fetch = self.downloaded_posts_count
         url = self.endpoint + self.endpoint_data_delimiter + self.offset_field + ('=%d&after=0' % self.last_post)
         try:
