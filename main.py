@@ -114,14 +114,16 @@ class Fetch:
         return self.data
 
 
-def download_media(data):
+def download_media(data, folder):
     if data['locations']:
         url = data['locations'][0]['location']
-        cdn_filename = data['location'].split('/')[-1]
+        cdn_filename = data['filename'] if 'filename' in data else data['location'].split('/')[-1]
         filename = datetime.datetime.utcfromtimestamp(data['createdAt']).strftime('%Y%m%d_%H%M%S_') + cdn_filename
         if filename.endswith('.mp4'):
+            os.makedirs(folder + 'vid', exist_ok=True)
             filename = 'vid/' + filename
         elif filename.endswith('.jpg') or filename.endswith('.png') or filename.endswith('.gif'):
+            os.makedirs(folder + 'pic', exist_ok=True)
             filename = 'pic/' + filename
         full_dl_path = folder + filename
         if not os.path.exists(full_dl_path):
@@ -135,28 +137,55 @@ def download_media(data):
     return True
 
 
-logging.info('Fetching user data')
-subscriptions = Fetch('subscriptions', 'subscriptions', paged=False).fetch_all()
-accountIds = list(map(lambda a: a['accountId'], subscriptions['subscriptions']))
+def main():
+    logging.info('Fetching user data')
+    subscriptions = Fetch('subscriptions', 'subscriptions', paged=False).fetch_all()
+    accountIds = list(map(lambda a: a['accountId'], subscriptions['subscriptions']))
+    accountUsernames = {}
 
-accounts = Fetch('account?ids=' + ','.join(accountIds), paged=False)
-for account in accounts:
-    logging.info('Downloading account ' + account['username'])
-    folder = '%s/%s/' % (config['download_folder'], account['username'])
-    os.makedirs(folder + 'vid', exist_ok=True)
-    os.makedirs(folder + 'pic', exist_ok=True)
+    accounts = Fetch('account?ids=' + ','.join(accountIds), paged=False)
+    for account in accounts:
+        logging.info('Downloading account ' + account['username'])
+        accountUsernames[account['id']] = account['username']
+        folder = '%s/%s/' % (config['download_folder'], account['username'])
 
-    posts = Fetch('timeline/' + account['id'], 'posts')
-    last_post = 0
-    hit_end = False
-    for post in posts:
-        for media in post['attachments']:
-            mediaIds = sum([x['accountMediaIds'] for x in posts.data['accountMediaBundles'] if x['id'] == media['contentId']], [])
-            mediaIds.extend([x['id'] for x in posts.data['accountMedia'] if x['id'] == media['contentId']])
+        posts = Fetch('timeline/' + account['id'], 'posts')
+        hit_end = False
+        for post in posts:
+            for media in post['attachments']:
+                mediaIds = sum([x['accountMediaIds'] for x in posts.data['accountMediaBundles'] if x['id'] == media['contentId']], [])
+                mediaIds.extend([x['id'] for x in posts.data['accountMedia'] if x['id'] == media['contentId']])
 
-            for mediaId in mediaIds:
-                data = next(x for x in posts.data['accountMedia'] if x['id'] == mediaId)['media']
-                if not download_media(data):
-                    hit_end = config['quick_fetch']
-        if hit_end:
-            break
+                for mediaId in mediaIds:
+                    data = next(x for x in posts.data['accountMedia'] if x['id'] == mediaId)['media']
+                    if not download_media(data, folder):
+                        hit_end = config['quick_fetch']
+            if hit_end:
+                break
+
+    groups = Fetch('messaging/groups?sortOrder=1&flags=0&subscriptionTierId=&search=&limit=25', 'data', offset_field='offset', id_field='groupId')
+    for group in groups:
+        logging.info('Downloading messages with ' + accountUsernames[group['partnerAccountId']])
+        folder = '%s/%s/msg_' % (config['download_folder'], accountUsernames[group['partnerAccountId']])
+
+        messages = Fetch('message?groupId=' + group['groupId'], 'messages')
+        hit_end = False
+        for message in messages:
+            if message['senderId'] == group['account_id']:
+                continue  # Do not download my pics
+
+            for media in message['attachments']:
+                mediaIds = []
+                if 'accountMediaBundles' in messages.data:
+                    mediaIds.extend(sum([x['accountMediaIds'] for x in messages.data['accountMediaBundles'] if x['id'] == media['contentId']], []))
+                if 'accountMedia' in messages.data:
+                    mediaIds.extend([x['id'] for x in messages.data['accountMedia'] if x['id'] == media['contentId']])
+
+                for mediaId in mediaIds:
+                    data = next(x for x in messages.data['accountMedia'] if x['id'] == mediaId)['media']
+                    if not download_media(data, folder):
+                        hit_end = config['quick_fetch']
+            if hit_end:
+                break
+
+main()
